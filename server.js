@@ -5,44 +5,33 @@ require('dotenv').config();
 
 const app = express();
 
-// Middlewares
+// ==========================================
+// 1. MIDDLEWARES
+// ==========================================
+// Enable CORS so the React frontend (running on port 3000) can communicate with this backend (port 5000)
 app.use(cors());
+
+// Parse incoming JSON request bodies into req.body as JavaScript objects
 app.use(express.json());
 
-// MongoDB Connection Configuration
+// ==========================================
+// 2. MONGODB CONNECTION
+// ==========================================
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/tasktracker';
 
-const connectDB = async () => {
-  try {
-    await mongoose.connect(MONGO_URI, {
-      serverSelectionTimeoutMS: 5000,
-    });
-    console.log(`[MongoDB] Connected successfully to ${MONGO_URI}`);
-  } catch (err) {
-    console.error('[MongoDB] Initial connection error:', err.message);
-    console.log('[MongoDB] Retrying connection in 5 seconds...');
-    setTimeout(connectDB, 5000);
-  }
-};
+mongoose.connect(MONGO_URI)
+  .then(() => console.log('✅ [MongoDB] Connected successfully!'))
+  .catch((err) => console.error('❌ [MongoDB] Connection error:', err.message));
 
-mongoose.connection.on('disconnected', () => {
-  console.warn('[MongoDB] Disconnected. Reconnecting...');
-});
-
-mongoose.connection.on('reconnected', () => {
-  console.log('[MongoDB] Reconnected successfully');
-});
-
-// Start DB connection
-connectDB();
-
-// Task Schema & Model
+// ==========================================
+// 3. SCHEMA & MODEL DEFINITION
+// ==========================================
+// Define the shape of documents inside the MongoDB collection
 const taskSchema = new mongoose.Schema({
   title: {
     type: String,
     required: [true, 'Task title is required'],
     trim: true,
-    maxlength: [200, 'Task title cannot exceed 200 characters']
   },
   completed: {
     type: Boolean,
@@ -50,127 +39,100 @@ const taskSchema = new mongoose.Schema({
   }
 }, { timestamps: true });
 
+// Compile schema into a Mongoose model
 const Task = mongoose.model('Task', taskSchema);
 
-// Middleware to check DB connection state
-const requireDB = (req, res, next) => {
-  if (mongoose.connection.readyState !== 1) {
-    return res.status(503).json({
-      message: 'Database is not connected. Please ensure MongoDB is running and try again.'
-    });
-  }
-  next();
-};
+// ==========================================
+// 4. API ROUTES (CRUD OPERATIONS)
+// ==========================================
 
-// --- ROUTES ---
-
-// Health Check
-app.get('/api/health', (req, res) => {
-  const states = ['disconnected', 'connected', 'connecting', 'disconnecting'];
-  const status = states[mongoose.connection.readyState] || 'unknown';
-  res.status(200).json({
-    status: 'ok',
-    database: status,
-    timestamp: new Date().toISOString()
-  });
-});
-
-// 1. GET /api/tasks (List tasks with pagination, filtering, search)
-app.get('/api/tasks', requireDB, async (req, res) => {
+// 1. [READ ALL] GET /api/tasks - Fetch all tasks from MongoDB
+app.get('/api/tasks', async (req, res) => {
   try {
-    const page = Math.max(1, parseInt(req.query.page) || 1);
-    const limit = Math.max(1, Math.min(50, parseInt(req.query.limit) || 5));
-    const skip = (page - 1) * limit;
-    const filter = req.query.filter; // 'all', 'active', 'completed'
-    const search = req.query.search ? req.query.search.trim() : '';
-
-    const query = {};
-    if (filter === 'active') {
-      query.completed = false;
-    } else if (filter === 'completed') {
-      query.completed = true;
-    }
-
-    if (search) {
-      query.title = { $regex: search, $options: 'i' };
-    }
-
-    const [totalTasks, allCount, activeCount, completedCount, tasks] = await Promise.all([
-      Task.countDocuments(query),
-      Task.countDocuments(),
-      Task.countDocuments({ completed: false }),
-      Task.countDocuments({ completed: true }),
-      Task.find(query)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-    ]);
-
-    const totalPages = Math.max(1, Math.ceil(totalTasks / limit));
-
-    res.status(200).json({
-      tasks,
-      pagination: {
-        totalTasks,
-        totalPages,
-        currentPage: page,
-        limit
-      },
-      stats: {
-        total: allCount,
-        active: activeCount,
-        completed: completedCount
-      }
-    });
+    // Retrieve all tasks, sorted with newest first (createdAt: -1)
+    const tasks = await Task.find().sort({ createdAt: -1 });
+    res.status(200).json(tasks);
   } catch (error) {
-    console.error('Error fetching tasks:', error);
-    res.status(500).json({ message: 'Server error fetching tasks: ' + error.message });
+    res.status(500).json({ message: 'Server error: ' + error.message });
   }
 });
 
-// 2. POST /api/tasks (Create a new task)
-app.post('/api/tasks', requireDB, async (req, res) => {
-  try {
-    const { title } = req.body;
-
-    if (!title || !title.trim()) {
-      return res.status(400).json({ message: 'Task title is required' });
-    }
-
-    const newTask = new Task({ title: title.trim() });
-    const savedTask = await newTask.save();
-
-    res.status(201).json(savedTask);
-  } catch (error) {
-    console.error('Error creating task:', error);
-    res.status(500).json({ message: 'Server error creating task: ' + error.message });
-  }
-});
-
-// 3. PATCH /api/tasks/:id (Update task status or title)
-app.patch('/api/tasks/:id', requireDB, async (req, res) => {
+// 2. [READ ONE] GET /api/tasks/:id - Fetch a single task by its MongoDB ID
+app.get('/api/tasks/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { completed, title } = req.body;
 
+    // Validate MongoDB ObjectId format
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ message: 'Invalid Task ID format' });
     }
 
-    const updates = {};
-    if (typeof completed === 'boolean') {
-      updates.completed = completed;
-    }
-    if (typeof title === 'string') {
-      if (!title.trim()) {
-        return res.status(400).json({ message: 'Task title cannot be blank' });
-      }
-      updates.title = title.trim();
+    const task = await Task.findById(id);
+    if (!task) {
+      return res.status(404).json({ message: 'Task not found' });
     }
 
+    res.status(200).json(task);
+  } catch (error) {
+    res.status(500).json({ message: 'Server error: ' + error.message });
+  }
+});
+
+// 3. [CREATE] POST /api/tasks - Create and persist a new task in MongoDB
+app.post('/api/tasks', async (req, res) => {
+  try {
+    // Extract task title from request payload
+    const { title } = req.body;
+
+    // Validation: Title must not be empty
+    if (!title || !title.trim()) {
+      return res.status(400).json({ message: 'Task title is required' });
+    }
+
+    // Instantiate new Mongoose document
+    const newTask = new Task({
+      title: title.trim()
+    });
+
+    // Save to MongoDB (asynchronous operation)
+    const savedTask = await newTask.save();
+
+    // Respond with 201 Created and the saved task
+    res.status(201).json(savedTask);
+
+  } catch (error) {
+    console.error('Error creating task:', error);
+    res.status(500).json({ message: 'Server error: ' + error.message });
+  }
+});
+
+// 4. [UPDATE] PUT /api/tasks/:id - Update task title and/or completed status
+app.put('/api/tasks/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, completed } = req.body;
+
+    // Validate MongoDB ObjectId format
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid Task ID format' });
+    }
+
+    // Build update object only with provided fields
+    const updateData = {};
+    if (title !== undefined) {
+      if (!title.trim()) {
+        return res.status(400).json({ message: 'Task title cannot be empty' });
+      }
+      updateData.title = title.trim();
+    }
+    if (completed !== undefined) {
+      updateData.completed = Boolean(completed);
+    }
+
+    // findByIdAndUpdate: { new: true } returns the updated document instead of the original
     const updatedTask = await Task.findByIdAndUpdate(
       id,
-      { $set: updates },
+      updateData,
       { new: true, runValidators: true }
     );
 
@@ -178,39 +140,48 @@ app.patch('/api/tasks/:id', requireDB, async (req, res) => {
       return res.status(404).json({ message: 'Task not found' });
     }
 
+    // Respond with 200 OK and the updated task
     res.status(200).json(updatedTask);
+
   } catch (error) {
     console.error('Error updating task:', error);
-    res.status(400).json({ message: 'Error updating task: ' + error.message });
+    res.status(500).json({ message: 'Server error: ' + error.message });
   }
 });
 
-// 4. DELETE /api/tasks/:id (Delete a task)
-app.delete('/api/tasks/:id', requireDB, async (req, res) => {
+// 5. [DELETE] DELETE /api/tasks/:id - Permanently remove a task from MongoDB
+app.delete('/api/tasks/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
+    // Validate MongoDB ObjectId format
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ message: 'Invalid Task ID format' });
     }
 
+    // findByIdAndDelete removes the matching document from MongoDB
     const deletedTask = await Task.findByIdAndDelete(id);
 
     if (!deletedTask) {
       return res.status(404).json({ message: 'Task not found' });
     }
 
-    res.status(200).json({ message: 'Task deleted successfully', task: deletedTask });
+    // Respond with 200 OK and confirmation
+    res.status(200).json({
+      message: 'Task deleted successfully',
+      deletedTask
+    });
+
   } catch (error) {
     console.error('Error deleting task:', error);
-    res.status(400).json({ message: 'Error deleting task: ' + error.message });
+    res.status(500).json({ message: 'Server error: ' + error.message });
   }
 });
 
-// Catch-all route for 404
-app.use((req, res) => {
-  res.status(404).json({ message: 'Route not found' });
-});
-
+// ==========================================
+// 5. START SERVER
+// ==========================================
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
+});
