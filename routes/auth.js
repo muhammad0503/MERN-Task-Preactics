@@ -1,6 +1,7 @@
-const express = require('express');
+import express from 'express';
+import User from '../models/User.js';
+
 const router = express.Router();
-const User = require('../models/User');
 
 // ==============================================================
 // 1. [POST] /api/auth/register - Register a new user account
@@ -133,5 +134,4 @@ const getCurrentUserHandler = async (req, res) => {
 router.get('/me', getCurrentUserHandler);
 router.get('/current-user', getCurrentUserHandler);
 
-module.exports = router;
-
+export default router;

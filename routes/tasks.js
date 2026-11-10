@@ -1,8 +1,9 @@
-const express = require('express');
-const mongoose = require('mongoose');
+import express from 'express';
+import mongoose from 'mongoose';
+import Task from '../models/Task.js';
+import { requireAuth } from '../middleware/auth.js';
+
 const router = express.Router();
-const Task = require('../models/Task');
-const { requireAuth } = require('../middleware/auth');
 
 // Protect all task endpoints: User must have an active session
 router.use(requireAuth);
@@ -142,5 +143,4 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-module.exports = router;
-
+export default router;
