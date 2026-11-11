@@ -7,6 +7,7 @@ import 'dotenv/config';
 
 import authRoutes from './routes/auth.js';
 import taskRoutes from './routes/tasks.js';
+import chatRoutes from './routes/chat.js';
 
 const app = express();
 
@@ -28,9 +29,25 @@ mongoose.connect(MONGO_URI)
 // ==========================================
 // 3. MIDDLEWARES & CORS
 // ==========================================
-// Allow React frontend origin with credentials (cookies)
+// Support standard local dev ports (3000, 3001, etc.) with credentials enabled
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:3001',
+  CLIENT_URL,
+].filter(Boolean);
+
 app.use(cors({
-  origin: CLIENT_URL,
+  origin: (origin, callback) => {
+    // Allow non-browser requests (Postman, curl, server-to-server)
+    if (!origin) return callback(null, true);
+    // Allow configured origins or any local dev port
+    if (allowedOrigins.includes(origin) || origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'));
+  },
   credentials: true,
 }));
 
@@ -71,6 +88,9 @@ app.use('/api/auth', authRoutes);
 
 // Protected task management routes
 app.use('/api/tasks', taskRoutes);
+
+// Protected AI chat routes
+app.use('/api/chat', chatRoutes);
 
 // Global 404 handler for unknown routes
 app.use((req, res) => {

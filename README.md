@@ -160,3 +160,37 @@ Follow these steps to confirm end-to-end functionality:
    * Log out of Bob and sign in as Alice.
    * Alice's tasks (`"Alice Task 1"`, `"Alice Task 2"`) remain intact and untouched.
 
+
+---
+
+## Phase 3: AI Chat Integration (Phase 1 - Stateless Gemini Assistant)
+
+### Overview
+Integrated Google Gemini (`gemini-2.5-flash`) into the app through a secure, authenticated backend endpoint.
+
+### Request Flow
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as User (Browser)
+    participant React as React UI (ChatScreen)
+    participant Axios as Axios (withCredentials)
+    participant AuthMW as requireAuth Middleware
+    participant Express as Express (routes/chat.js)
+    participant LLM as Service (services/llm.js)
+    participant Gemini as Google Gemini API
+
+    User->>React: Types message -> Clicks "Send"
+    React->>React: Adds message to local screen state
+    React->>Axios: chatService.sendMessage(message)
+    Axios->>Express: POST /api/chat { message } (with session cookie)
+    Express->>AuthMW: Validates active user session
+    AuthMW->>Express: User authorized
+    Express->>LLM: generateReply(message)
+    LLM->>Gemini: ai.models.generateContent({ model, contents: message })
+    Gemini-->>LLM: Generated reply text
+    LLM-->>Express: Returns reply
+    Express-->>Axios: 200 OK { reply }
+    Axios-->>React: Appends AI reply to local state
+    React-->>User: Displays AI response in chat viewport
+```

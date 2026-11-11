@@ -1,12 +1,16 @@
-import React from 'react';
+import React, { useState } from 'react';
 import './App.css';
 import { useAuth } from './context/AuthContext';
 import AuthCard from './components/AuthCard';
 import TaskManager from './components/TaskManager';
+import ChatScreen from './components/ChatScreen';
 
 function App() {
   const { user, isAuthenticated, isUserLoading, logout, isAuthActionLoading } =
     useAuth();
+
+  // Active view: 'tasks' or 'chat'
+  const [activeView, setActiveView] = useState('tasks');
 
   return (
     <div className="app-wrapper">
@@ -22,7 +26,7 @@ function App() {
         // If not authenticated, display Register / Sign-in card
         <AuthCard />
       ) : (
-        // Authenticated workspace: display personal task tracker
+        // Authenticated workspace
         <div className="task-container">
           {/* Header */}
           <header className="app-header">
@@ -44,7 +48,7 @@ function App() {
               </div>
               <div>
                 <h1 className="brand-title">TaskFlow</h1>
-                <span className="brand-subtitle">Private Tasks Workspace</span>
+                <span className="brand-subtitle">Private Tasks & AI Workspace</span>
               </div>
             </div>
 
@@ -86,8 +90,52 @@ function App() {
             </div>
           </header>
 
-          {/* User's Task Manager (CRUD with TanStack Query) */}
-          <TaskManager />
+          {/* Navigation Tabs (Tasks vs AI Chat) */}
+          <div className="view-tabs">
+            <button
+              type="button"
+              className={`view-tab ${activeView === 'tasks' ? 'active' : ''}`}
+              onClick={() => setActiveView('tasks')}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <polyline points="9 11 12 14 22 4" />
+                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+              </svg>
+              <span>My Tasks</span>
+            </button>
+
+            <button
+              type="button"
+              className={`view-tab ${activeView === 'chat' ? 'active' : ''}`}
+              onClick={() => setActiveView('chat')}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg>
+              <span>AI Chat (Gemini)</span>
+            </button>
+          </div>
+
+          {/* Active View: Tasks or AI Chat */}
+          {activeView === 'tasks' ? <TaskManager /> : <ChatScreen />}
         </div>
       )}
     </div>
